@@ -1,0 +1,207 @@
+package com.example.pentametod2.ui.formularios
+
+import androidx.compose.runtime.saveable.Saver
+import com.example.pentametod2.catalogo.Entrada
+import com.example.pentametod2.catalogo.EntradaInterpolacion
+import com.example.pentametod2.catalogo.EntradaRegresionMultiple
+import com.example.pentametod2.catalogo.EntradaRegresionPolinomial
+import com.example.pentametod2.catalogo.EntradaSistema
+import com.example.pentametod2.catalogo.ModoNodos
+import com.example.pentametod2.model.MetodoId
+
+/**
+ * Estado de cada formulario: solo textos, tal como los escribe el alumno.
+ * Todas las conversiones son funciones puras (testeadas en commonTest).
+ */
+sealed interface EstadoFormulario {
+    fun aEntrada(): Entrada
+}
+
+// ── Sistemas ──
+
+const val MIN_ECUACIONES = 2
+const val MAX_ECUACIONES = 4
+private val NOMBRES_POR_DEFECTO = listOf("x", "y", "z", "w")
+
+/** "x, y" para 2 ecuaciones, "x, y, z" para 3, "x, y, z, w" para 4. */
+fun variablesPorDefecto(n: Int): String = NOMBRES_POR_DEFECTO.take(n.coerceIn(1, MAX_ECUACIONES)).joinToString(", ")
+
+data class EstadoSistema(
+    val ecuaciones: List<String> = List(MIN_ECUACIONES) { "" },
+    val variables: String = variablesPorDefecto(MIN_ECUACIONES),
+    val x0: String = "",
+    val tolerancia: String = "1e-6",
+    val maxIter: String = "50",
+) : EstadoFormulario {
+    override fun aEntrada(): Entrada = EntradaSistema(ecuaciones, variables, x0, tolerancia, maxIter)
+
+    fun conEcuacion(i: Int, texto: String): EstadoSistema =
+        copy(ecuaciones = ecuaciones.mapIndexed { j, e -> if (j == i) texto else e })
+
+    /** Agrega una ecuación (máx. 4). Si las variables eran las de por defecto, las ajusta. */
+    fun agregarEcuacion(): EstadoSistema {
+        if (ecuaciones.size >= MAX_ECUACIONES) return this
+        return redimensionar(ecuaciones + "")
+    }
+
+    /** Quita la última ecuación (mín. 2). */
+    fun quitarEcuacion(): EstadoSistema {
+        if (ecuaciones.size <= MIN_ECUACIONES) return this
+        return redimensionar(ecuaciones.dropLast(1))
+    }
+
+    /** Quita la ecuación `i` (mín. 2). */
+    fun quitarEcuacion(i: Int): EstadoSistema {
+        if (ecuaciones.size <= MIN_ECUACIONES || i !in ecuaciones.indices) return this
+        return redimensionar(ecuaciones.filterIndexed { j, _ -> j != i })
+    }
+
+    private fun redimensionar(nuevas: List<String>): EstadoSistema {
+        val vars = if (normalizar(variables) == normalizar(variablesPorDefecto(ecuaciones.size))) variablesPorDefecto(nuevas.size) else variables
+        return copy(ecuaciones = nuevas, variables = vars)
+    }
+
+    /** Nombres para las etiquetas; si el campo no tiene tantos nombres válidos, usa x, y, z, w. */
+    fun nombresVariables(): List<String> {
+        val dados = variables.split(',', ';', ' ', '\t', '\n').map { it.trim() }.filter { it.isNotEmpty() }
+        return if (dados.size == ecuaciones.size) dados else NOMBRES_POR_DEFECTO.take(ecuaciones.size)
+    }
+
+    private fun normalizar(s: String) = s.filter { !it.isWhitespace() }
+}
+
+// ── Interpolación ──
+
+data class EstadoInterpolacion(
+    val xs: String = "",
+    val ys: String = "",
+    val x: String = "",
+    val modo: ModoNodos = ModoNodos.MANUAL,
+    val grado: String = "",
+) : EstadoFormulario {
+    override fun aEntrada(): Entrada = EntradaInterpolacion(xs, ys, x, modo, grado)
+}
+
+// ── Regresión polinomial ──
+
+data class EstadoRegresionPolinomial(
+    val xs: String = "",
+    val ys: String = "",
+    val grado: String = "1",
+    val xPredecir: String = "",
+) : EstadoFormulario {
+    override fun aEntrada(): Entrada = EntradaRegresionPolinomial(xs, ys, grado, xPredecir)
+}
+
+// ── Regresión múltiple ──
+
+const val MIN_FILAS = 3
+const val MIN_VARIABLES = 1
+const val MAX_VARIABLES = 4
+
+/** Cuadrícula de datos: cada fila tiene k celdas x más una celda y (la última). */
+data class EstadoRegresionMultiple(
+    val numVariables: Int = 2,
+    val filas: List<List<String>> = List(MIN_FILAS) { List(2 + 1) { "" } },
+    val xPredecir: String = "",
+) : EstadoFormulario {
+    override fun aEntrada(): Entrada = EntradaRegresionMultiple(filas, xPredecir)
+
+    fun conCelda(fila: Int, columna: Int, texto: String): EstadoRegresionMultiple =
+        copy(filas = filas.mapIndexed { i, f -> if (i == fila) f.mapIndexed { j, c -> if (j == columna) texto else c } else f })
+
+    fun agregarFila(): EstadoRegresionMultiple = copy(filas = filas + listOf(List(numVariables + 1) { "" }))
+
+    /** Quita la fila `i` si quedan más de [MIN_FILAS]. */
+    fun quitarFila(i: Int): EstadoRegresionMultiple {
+        if (filas.size <= MIN_FILAS || i !in filas.indices) return this
+        return copy(filas = filas.filterIndexed { j, _ -> j != i })
+    }
+
+    /** Cambia k conservando las x existentes (recorta o agrega columnas vacías) y la y al final. */
+    fun conNumVariables(k: Int): EstadoRegresionMultiple {
+        val nuevoK = k.coerceIn(MIN_VARIABLES, MAX_VARIABLES)
+        if (nuevoK == numVariables) return this
+        val nuevas = filas.map { f ->
+            val xs = f.dropLast(1)
+            val y = f.lastOrNull() ?: ""
+            xs.take(nuevoK) + List((nuevoK - xs.size).coerceAtLeast(0)) { "" } + y
+        }
+        return copy(numVariables = nuevoK, filas = nuevas)
+    }
+}
+
+// ── Construcción y conversión ──
+
+/** Formulario vacío para cada método. */
+fun estadoInicial(id: MetodoId): EstadoFormulario = when (id) {
+    MetodoId.PUNTO_FIJO, MetodoId.NEWTON_SISTEMAS -> EstadoSistema()
+    MetodoId.LAGRANGE, MetodoId.NEWTON_INTERPOLACION -> EstadoInterpolacion()
+    MetodoId.REGRESION_POLINOMIAL -> EstadoRegresionPolinomial()
+    MetodoId.REGRESION_MULTIPLE -> EstadoRegresionMultiple()
+}
+
+/** Entrada → estado del formulario (para "Cargar ejemplo"). */
+fun estadoDesdeEntrada(e: Entrada): EstadoFormulario = when (e) {
+    is EntradaSistema -> EstadoSistema(e.ecuaciones, e.variables, e.x0, e.tolerancia, e.maxIter)
+    is EntradaInterpolacion -> EstadoInterpolacion(e.xs, e.ys, e.x, e.modo, e.grado)
+    is EntradaRegresionPolinomial -> EstadoRegresionPolinomial(e.xs, e.ys, e.grado, e.xPredecir)
+    is EntradaRegresionMultiple -> multipleDesdeEntrada(e)
+}
+
+private fun multipleDesdeEntrada(e: EntradaRegresionMultiple): EstadoRegresionMultiple {
+    val columnas = e.filas.maxOfOrNull { it.size } ?: 3
+    val k = (columnas - 1).coerceIn(MIN_VARIABLES, MAX_VARIABLES)
+    val filas = e.filas + List((MIN_FILAS - e.filas.size).coerceAtLeast(0)) { List(k + 1) { "" } }
+    return EstadoRegresionMultiple(k, filas, e.xPredecir)
+}
+
+// ── Guardado (rememberSaveable): todo se convierte en una lista de textos ──
+
+private const val TAG_SISTEMA = "S"
+private const val TAG_INTERPOLACION = "I"
+private const val TAG_POLINOMIAL = "P"
+private const val TAG_MULTIPLE = "M"
+
+fun EstadoFormulario.aLista(): List<String> = when (this) {
+    is EstadoSistema -> listOf(TAG_SISTEMA, variables, x0, tolerancia, maxIter) + ecuaciones
+    is EstadoInterpolacion -> listOf(TAG_INTERPOLACION, xs, ys, x, modo.name, grado)
+    is EstadoRegresionPolinomial -> listOf(TAG_POLINOMIAL, xs, ys, grado, xPredecir)
+    is EstadoRegresionMultiple -> listOf(TAG_MULTIPLE, numVariables.toString(), xPredecir) + filas.flatten()
+}
+
+/** Inversa de [aLista]; null si la lista no es válida. */
+fun estadoDesdeLista(l: List<String>): EstadoFormulario? {
+    if (l.isEmpty()) return null
+    return when (l[0]) {
+        TAG_SISTEMA -> if (l.size < 5) null else EstadoSistema(l.drop(5), l[1], l[2], l[3], l[4])
+        TAG_INTERPOLACION -> if (l.size != 6) null else EstadoInterpolacion(l[1], l[2], l[3], modoDesde(l[4]), l[5])
+        TAG_POLINOMIAL -> if (l.size != 5) null else EstadoRegresionPolinomial(l[1], l[2], l[3], l[4])
+        TAG_MULTIPLE -> multipleDesdeLista(l)
+        else -> null
+    }
+}
+
+private fun modoDesde(s: String): ModoNodos = ModoNodos.entries.firstOrNull { it.name == s } ?: ModoNodos.MANUAL
+
+private fun multipleDesdeLista(l: List<String>): EstadoRegresionMultiple? {
+    val k = l.getOrNull(1)?.toIntOrNull() ?: return null
+    if (l.size < 3) return null
+    val celdas = l.drop(3)
+    if (celdas.size % (k + 1) != 0) return null
+    return EstadoRegresionMultiple(k, celdas.chunked(k + 1), l[2])
+}
+
+val FormularioSaver: Saver<EstadoFormulario, Any> = Saver(
+    save = { ArrayList(it.aLista()) },
+    restore = { restaurarFormulario(it) },
+)
+
+/** Para el formulario "calculado" (null antes del primer cálculo). */
+val FormularioOpcionalSaver: Saver<EstadoFormulario?, Any> = Saver(
+    save = { it?.let { e -> ArrayList(e.aLista()) } },
+    restore = { restaurarFormulario(it) },
+)
+
+@Suppress("UNCHECKED_CAST")
+private fun restaurarFormulario(guardado: Any): EstadoFormulario? = (guardado as? List<String>)?.let { estadoDesdeLista(it) }
