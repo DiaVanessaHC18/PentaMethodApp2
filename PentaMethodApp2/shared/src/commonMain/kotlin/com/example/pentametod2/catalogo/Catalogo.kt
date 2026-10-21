@@ -75,9 +75,9 @@ object Catalogo {
             ),
             "1, 1",
         )
-        MetodoId.LAGRANGE -> EntradaInterpolacion("2.2, 2.4, 2.6", "0.5207843, 0.5104147, 0.4813306", "2.5", ModoNodos.MANUAL)
+        MetodoId.LAGRANGE -> EntradaInterpolacion("2.2, 2.4, 2.6", "0.5, 0.8, 1.4", "2.5", ModoNodos.MANUAL)
         MetodoId.NEWTON_INTERPOLACION -> EntradaInterpolacion(
-            "2, 2.2, 2.4, 2.6, 2.8", "0.5103757, 0.5207843, 0.5104147, 0.4813306, 0.435916", "2.1", ModoNodos.MANUAL,
+            "2, 2.2, 2.4, 2.6, 2.8", "0.5, 0.8, 1.4 , 0.1 , 1.2 ", "2.5", ModoNodos.MANUAL,
         )
     }
 
@@ -88,7 +88,11 @@ object Catalogo {
                 MetodoId.NEWTON_SISTEMAS -> newtonSistemas(entrada as? EntradaSistema ?: return entradaIncorrecta(id))
                 MetodoId.REGRESION_POLINOMIAL -> regresionPolinomial(entrada as? EntradaRegresionPolinomial ?: return entradaIncorrecta(id))
                 MetodoId.REGRESION_MULTIPLE -> regresionMultiple(entrada as? EntradaRegresionMultiple ?: return entradaIncorrecta(id))
-                MetodoId.LAGRANGE -> lagrange(entrada as? EntradaInterpolacion ?: return entradaIncorrecta(id))
+                MetodoId.LAGRANGE -> when (entrada) {
+                    is EntradaLagrange -> CalculoLagrange.ejecutar(entrada)
+                    is EntradaInterpolacion -> lagrange(entrada)
+                    else -> return entradaIncorrecta(id)
+                }
                 MetodoId.NEWTON_INTERPOLACION -> newtonInterpolacion(entrada as? EntradaInterpolacion ?: return entradaIncorrecta(id))
             }
             verificarFinitos(salida)

@@ -92,6 +92,7 @@ fun TarjetasEdicion(
     intentoFallido: Int = 0,
 ) {
     when (estado) {
+        is EstadoLagrange -> FormularioLagrange(estado, alCambiar, intentoFallido)
         is EstadoSistema -> FormularioSistema(estado, id == MetodoId.PUNTO_FIJO, alCambiar)
         is EstadoInterpolacion -> TarjetaDatos { FormularioInterpolacion(estado, alCambiar) }
         is EstadoRegresionPolinomial -> FormularioRegresionPolinomial(estado, alCambiar, intentoFallido)
@@ -103,8 +104,11 @@ fun TarjetasEdicion(
  * true si "Calcular" no debe lanzar el cálculo porque el formulario ya sabe que los datos están mal
  * (hoy solo la regresión polinomial valida antes; el resto deja los errores al motor).
  */
-fun bloqueaCalculo(estado: EstadoFormulario): Boolean =
-    estado is EstadoRegresionPolinomial && estado.validacion() !is ValidacionPares.Ok
+fun bloqueaCalculo(estado: EstadoFormulario): Boolean = when (estado) {
+    is EstadoLagrange -> estado.validacion() != null
+    is EstadoRegresionPolinomial -> estado.validacion() !is ValidacionPares.Ok
+    else -> false
+}
 
 /** Con fuente grande (> 1.15×) "Cargar ejemplo" pierde el ícono para que ambos botones quepan en el dock. */
 fun botonesSinIcono(escalaFuente: Float): Boolean = escalaFuente > 1.15f
@@ -114,7 +118,7 @@ fun botonesSinIcono(escalaFuente: Float): Boolean = escalaFuente > 1.15f
  * y "Calcular" (relleno). Respeta la barra de navegación y sube con el teclado (insets safeDrawing).
  */
 @Composable
-fun DockAcciones(calculando: Boolean, alCargarEjemplo: () -> Unit, alCalcular: () -> Unit) {
+fun DockAcciones(calculando: Boolean, alCargarEjemplo: () -> Unit, alCalcular: () -> Unit, puedeCalcular: Boolean = true) {
     val borde = MaterialTheme.colorScheme.outlineVariant
     val sinIcono = botonesSinIcono(LocalDensity.current.fontScale)
     Surface(color = MaterialTheme.colorScheme.background) {
@@ -133,7 +137,7 @@ fun DockAcciones(calculando: Boolean, alCargarEjemplo: () -> Unit, alCalcular: (
                         alCalcular,
                         Modifier.weight(1f),
                         icono = Iconos.calculadora,
-                        habilitado = !calculando,
+                        habilitado = !calculando && puedeCalcular,
                     )
                 }
             }

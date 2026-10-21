@@ -15,10 +15,22 @@ private fun oDefecto(texto: String, defecto: String) = texto.trim().ifEmpty { de
 
 /** Resumen de solo lectura de lo que escribió el alumno. */
 fun resumenEntrada(id: MetodoId, estado: EstadoFormulario): List<LineaEntrada> = when (estado) {
+    is EstadoLagrange -> listOf(
+        LineaEntrada("Puntos", resumenPuntosLagrange(estado)),
+        LineaEntrada("x evaluar", estado.x),
+        LineaEntrada("Grados", estado.grados.joinToString()),
+        LineaEntrada("Selección", if (estado.modo == ModoNodos.MANUAL) "Manual por grado" else "Automática por cercanía"),
+    ) + if (estado.funcionHabilitada) listOf(LineaEntrada("f(x)", estado.funcion)) else emptyList()
     is EstadoSistema -> resumenSistema(id == MetodoId.PUNTO_FIJO, estado)
     is EstadoInterpolacion -> resumenInterpolacion(estado)
     is EstadoRegresionPolinomial -> resumenPolinomial(estado)
     is EstadoRegresionMultiple -> resumenMultiple(estado)
+}
+
+private fun resumenPuntosLagrange(e: EstadoLagrange): String {
+    val puntos = com.example.pentametod2.catalogo.DatosLagrange.filasConDatos(e.puntos)
+    val primeros = puntos.take(4).joinToString { "${com.example.pentametod2.catalogo.nombrePunto(it.id)} (${it.x}, ${it.y})" }
+    return if (puntos.size <= 4) primeros else "${puntos.size} puntos · $primeros · ${puntos.size - 4} más"
 }
 
 private fun resumenSistema(puntoFijo: Boolean, e: EstadoSistema): List<LineaEntrada> {

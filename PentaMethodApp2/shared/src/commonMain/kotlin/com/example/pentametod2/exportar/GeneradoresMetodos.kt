@@ -169,15 +169,16 @@ private val RANGO_GRAFICA = listOf(
 )
 
 object GeneradorLagrange : GeneradorMetodo {
-    override fun nombreBase(s: SalidaMetodo) = "lagrange_grado${datosInterpolacion(s).grado}"
+    override fun nombreBase(s: SalidaMetodo) = if (s.comparacionLagrange != null) GeneradorComparacionLagrange.nombreBase(s) else "lagrange_grado${datosInterpolacion(s).grado}"
 
-    override fun hojas(s: SalidaMetodo, entrada: Entrada?): List<HojaX> = listOf(
+    override fun hojas(s: SalidaMetodo, entrada: Entrada?): List<HojaX> = if (s.comparacionLagrange != null) GeneradorComparacionLagrange.hojas(s, entrada) else listOf(
         hojaTabla(tabla(s, "Nodos y polinomios de Lagrange"), "Lagrange"),
         hojaResultados(pasos(s)),
         entradaInterpolacion(datosInterpolacion(s), "yₖ"),
     )
 
     override fun codigoOctave(s: SalidaMetodo, entrada: Entrada?): String {
+        if (s.comparacionLagrange != null) return GeneradorComparacionLagrange.codigoOctave(s, entrada)
         val d = datosInterpolacion(s)
         val l = mutableListOf("% Polinomio de Lagrange (exportado desde Pentametod2)", CABECERA, "")
         l += comentario(s, 1)

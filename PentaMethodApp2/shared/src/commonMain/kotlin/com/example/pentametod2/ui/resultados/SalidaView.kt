@@ -98,12 +98,17 @@ import com.example.pentametod2.ui.tema.mono
  * "Copiar resultados" está en el menú de la barra superior.
  */
 @Composable
-fun ResultadosMetodo(salida: SalidaMetodo, alEditar: () -> Unit, alAbrirMetodo: (MetodoId) -> Unit, claveCalculo: Int) {
+fun ResultadosMetodo(salida: SalidaMetodo, alEditar: () -> Unit, alAbrirMetodo: (MetodoId) -> Unit, claveCalculo: Int,
+                     mostrarIndicador: Boolean = true) {
+    if (salida.comparacionLagrange != null) {
+        ResultadosLagrange(salida, alEditar, alAbrirMetodo, claveCalculo)
+        return
+    }
     var avisoDescartado by remember(claveCalculo) { mutableStateOf(false) }
     val conPasos = usaPasos(salida)
     Column(verticalArrangement = Arrangement.spacedBy(Dimens.entreTarjetas)) {
         if (!conPasos && salida.formulas.isNotEmpty()) TarjetaExplicacion(salida.formulas)
-        SeparadorResultados(salida, if (conPasos) "Pasos" else "Resultados")
+        SeparadorResultados(salida, if (conPasos) "Pasos" else "Resultados", mostrarIndicador)
         if (salida.estado == Estado.ERROR) {
             val (titulo, acciones) = bannerError(salida)
             BannerEstado(
@@ -202,12 +207,12 @@ private fun CajaFormula(lineas: List<String>) {
 // ── 2. Separador ──
 
 @Composable
-private fun SeparadorResultados(s: SalidaMetodo, etiqueta: String) {
+private fun SeparadorResultados(s: SalidaMetodo, etiqueta: String, mostrarIndicador: Boolean = true) {
     val (texto, tipo) = chipResultados(s)
     Row(Modifier.fillMaxWidth().padding(top = Dimens.e8), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Dimens.e12)) {
         EtiquetaSeccion(etiqueta, Modifier.semantics { heading() })
         HorizontalDivider(Modifier.weight(1f), thickness = Dimens.borde, color = MaterialTheme.colorScheme.outlineVariant)
-        ChipEstado(texto, tipo)
+        if (mostrarIndicador) ChipEstado(texto, tipo)
     }
 }
 

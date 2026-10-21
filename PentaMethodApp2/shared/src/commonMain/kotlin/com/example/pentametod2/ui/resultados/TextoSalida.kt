@@ -46,6 +46,11 @@ fun filasVisibles(tabla: BloqueTabla, max: Int = MAX_FILAS_TABLA): Pair<List<Lis
 /** Resumen y tablas como texto separado por tabulaciones (para pegar en Excel). */
 fun textoParaCopiar(salida: SalidaMetodo): String {
     val sb = StringBuilder()
+    salida.comparacionLagrange?.let { c ->
+        c.funcion?.let { sb.append("Función original\t").append(it).append('\n') }
+        sb.append("Datos ingresados\nPunto\tX\tY\n")
+        c.puntos.forEach { sb.append(com.example.pentametod2.catalogo.nombrePunto(it.id)).append('\t').append(it.x).append('\t').append(it.y).append('\n') }
+    }
     salida.error?.let { sb.append("Error\t").append(it).append('\n') }
     for (a in salida.advertencias) sb.append("Advertencia\t").append(a).append('\n')
     for (r in salida.resumen) sb.append(r.etiqueta).append('\t').append(r.valor).append('\n')
@@ -53,6 +58,14 @@ fun textoParaCopiar(salida: SalidaMetodo): String {
         sb.append('\n').append(t.titulo).append('\n')
         sb.append(t.columnas.joinToString("\t")).append('\n')
         for (f in t.filas) sb.append(f.joinToString("\t") { textoCelda(it, t.decimales) }).append('\n')
+    }
+    salida.comparacionLagrange?.resultados?.forEach { r ->
+        sb.append("\nGrado ").append(r.grado).append('\n')
+        for (p in r.detalle.bloques.filterIsInstance<com.example.pentametod2.model.BloquePaso>()) {
+            sb.append(p.numero).append(". ").append(p.titulo).append('\n')
+            p.conTusDatos.forEach { sb.append(it).append('\n') }
+        }
+        sb.append(textoParaCopiar(r.detalle)).append('\n')
     }
     return sb.toString().trimEnd('\n')
 }

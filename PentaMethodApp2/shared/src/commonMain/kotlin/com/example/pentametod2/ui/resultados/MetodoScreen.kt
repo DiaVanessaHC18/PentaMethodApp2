@@ -71,6 +71,7 @@ import com.example.pentametod2.ui.formularios.bloqueaCalculo
 import com.example.pentametod2.ui.formularios.conVistaDe
 import com.example.pentametod2.ui.formularios.estadoDesdeEntrada
 import com.example.pentametod2.ui.formularios.estadoInicial
+import com.example.pentametod2.ui.formularios.paraMetodo
 import com.example.pentametod2.ui.formularios.resumenEntrada
 import com.example.pentametod2.ui.tema.Dimens
 import com.example.pentametod2.ui.tema.Formas
@@ -125,6 +126,11 @@ fun MetodoScreen(info: MetodoInfo, alVolver: () -> Unit, alAbrirMetodo: (MetodoI
     @Suppress("DEPRECATION") // LocalClipboard (la API nueva) necesita un ClipEntry que solo se construye por plataforma.
     val portapapeles = LocalClipboardManager.current
 
+    LaunchedEffect(id) {
+        formulario = formulario.paraMetodo(id)
+        calculado = calculado?.paraMetodo(id)
+    }
+
     LaunchedEffect(numCalculo) {
         val datos = calculado ?: return@LaunchedEffect
         calculando = true
@@ -134,7 +140,7 @@ fun MetodoScreen(info: MetodoInfo, alVolver: () -> Unit, alAbrirMetodo: (MetodoI
 
     Scaffold(
         topBar = {
-            val s = salida
+            val s = if (id == MetodoId.LAGRANGE && (calculando || (enEdicion && formulario != calculado))) null else salida
             BarraSuperior(
                 info.nombre,
                 alVolver,
@@ -165,7 +171,8 @@ fun MetodoScreen(info: MetodoInfo, alVolver: () -> Unit, alAbrirMetodo: (MetodoI
             if (enEdicion) {
                 DockAcciones(
                     calculando = calculando,
-                    alCargarEjemplo = { formulario = estadoDesdeEntrada(Catalogo.ejemplo(id)).conVistaDe(formulario) },
+                    puedeCalcular = id != MetodoId.LAGRANGE || !bloqueaCalculo(formulario),
+                    alCargarEjemplo = { formulario = estadoDesdeEntrada(Catalogo.ejemplo(id)).paraMetodo(id).conVistaDe(formulario) },
                     alCalcular = {
                         if (bloqueaCalculo(formulario)) {
                             intentoFallido++
@@ -203,7 +210,7 @@ fun MetodoScreen(info: MetodoInfo, alVolver: () -> Unit, alAbrirMetodo: (MetodoI
                         TarjetaEntradaComprimida(resumenEntrada(id, datosCalculados)) { editando = true }
                     }
 
-                    val s = salida
+                    val s = if (id == MetodoId.LAGRANGE && enEdicion && formulario != calculado) null else salida
                     if (s == null) {
                         if (!calculando) LineaAyuda()
                     } else {

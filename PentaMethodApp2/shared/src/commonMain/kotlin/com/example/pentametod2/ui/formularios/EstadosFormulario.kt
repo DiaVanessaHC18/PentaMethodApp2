@@ -3,6 +3,7 @@ package com.example.pentametod2.ui.formularios
 import androidx.compose.runtime.saveable.Saver
 import com.example.pentametod2.catalogo.Entrada
 import com.example.pentametod2.catalogo.EntradaInterpolacion
+import com.example.pentametod2.catalogo.EntradaLagrange
 import com.example.pentametod2.catalogo.EntradaRegresionMultiple
 import com.example.pentametod2.catalogo.EntradaRegresionPolinomial
 import com.example.pentametod2.catalogo.EntradaSistema
@@ -191,13 +192,15 @@ data class EstadoRegresionMultiple(
 /** Formulario vacío para cada método. */
 fun estadoInicial(id: MetodoId): EstadoFormulario = when (id) {
     MetodoId.PUNTO_FIJO, MetodoId.NEWTON_SISTEMAS -> EstadoSistema()
-    MetodoId.LAGRANGE, MetodoId.NEWTON_INTERPOLACION -> EstadoInterpolacion()
+    MetodoId.LAGRANGE -> EstadoLagrange()
+    MetodoId.NEWTON_INTERPOLACION -> EstadoInterpolacion()
     MetodoId.REGRESION_POLINOMIAL -> EstadoRegresionPolinomial()
     MetodoId.REGRESION_MULTIPLE -> EstadoRegresionMultiple()
 }
 
 /** Entrada → estado del formulario (para "Cargar ejemplo"). */
 fun estadoDesdeEntrada(e: Entrada): EstadoFormulario = when (e) {
+    is EntradaLagrange -> EstadoLagrange(e.puntos, e.x, e.grados, e.modo, e.selecciones, e.funcion != null, e.funcion.orEmpty())
     is EntradaSistema -> EstadoSistema(e.ecuaciones, e.variables, e.x0, e.tolerancia, e.maxIter)
     is EntradaInterpolacion -> EstadoInterpolacion(e.xs, e.ys, e.x, e.modo, e.grado)
     is EntradaRegresionPolinomial -> EstadoRegresionPolinomial(e.xs, e.ys, e.grado, e.xPredecir)
@@ -219,6 +222,7 @@ private const val TAG_POLINOMIAL = "P"
 private const val TAG_MULTIPLE = "M"
 
 fun EstadoFormulario.aLista(): List<String> = when (this) {
+    is EstadoLagrange -> guardar()
     is EstadoSistema -> listOf(TAG_SISTEMA, variables, x0, tolerancia, maxIter) + ecuaciones
     is EstadoInterpolacion -> listOf(TAG_INTERPOLACION, xs, ys, x, modo.name, grado)
     is EstadoRegresionPolinomial -> listOf(TAG_POLINOMIAL, grado, xPredecir, vista.name, xs.size.toString()) + xs + ys
@@ -229,6 +233,7 @@ fun EstadoFormulario.aLista(): List<String> = when (this) {
 fun estadoDesdeLista(l: List<String>): EstadoFormulario? {
     if (l.isEmpty()) return null
     return when (l[0]) {
+        "L1", "L2", "L3" -> EstadoLagrange.restaurar(l)
         TAG_SISTEMA -> if (l.size < 5) null else EstadoSistema(l.drop(5), l[1], l[2], l[3], l[4])
         TAG_INTERPOLACION -> if (l.size != 6) null else EstadoInterpolacion(l[1], l[2], l[3], modoDesde(l[4]), l[5])
         TAG_POLINOMIAL -> polinomialDesdeLista(l)
@@ -247,8 +252,13 @@ private fun polinomialDesdeLista(l: List<String>): EstadoRegresionPolinomial? {
 }
 
 /** "Cargar ejemplo" conserva la vista (Lista o Tabla) que tenía el alumno. */
-fun EstadoFormulario.conVistaDe(anterior: EstadoFormulario): EstadoFormulario =
-    if (this is EstadoRegresionPolinomial && anterior is EstadoRegresionPolinomial) conVista(anterior.vista) else this
+fun EstadoFormulario.conVistaDe(anterior: EstadoFormulario): EstadoFormulario = when {
+    this is EstadoRegresionPolinomial && anterior is EstadoRegresionPolinomial -> conVista(anterior.vista)
+    this is EstadoLagrange && anterior is EstadoLagrange ->
+        conVista(anterior.vista).copy(modo = ModoNodos.AUTOMATICO, selecciones = emptyMap(), gradoPredeterminado = true)
+            .conGradoPredeterminado()
+    else -> this
+}
 
 private fun multipleDesdeLista(l: List<String>): EstadoRegresionMultiple? {
     val k = l.getOrNull(1)?.toIntOrNull() ?: return null

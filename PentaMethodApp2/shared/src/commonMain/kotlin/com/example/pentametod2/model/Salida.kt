@@ -15,6 +15,7 @@ data class SalidaMetodo(
     val error: String?,
     /** Datos de entrada ya leídos, para exportar (Octave, Excel). null si el método aún no exporta. */
     val exportable: DatosExportables? = null,
+    val comparacionLagrange: ComparacionLagrange? = null,
 ) {
     companion object {
         fun conError(metodo: MetodoId, mensaje: String) = SalidaMetodo(
