@@ -1,6 +1,14 @@
 package com.example.pentametod2.ui.formularios
 
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.material3.Surface
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,11 +31,11 @@ import androidx.compose.ui.unit.dp
 import com.example.pentametod2.catalogo.ModoNodos
 import com.example.pentametod2.model.MetodoId
 import com.example.pentametod2.ui.componentes.BotonPrimario
-import com.example.pentametod2.ui.componentes.BotonSecundario
+import com.example.pentametod2.ui.componentes.BotonTexto
 import com.example.pentametod2.ui.componentes.BotonTonal
+import com.example.pentametod2.ui.componentes.ContenidoCentrado
 import com.example.pentametod2.ui.componentes.CajaInfo
 import com.example.pentametod2.ui.componentes.CampoTexto
-import com.example.pentametod2.ui.componentes.EtiquetaSeccion
 import com.example.pentametod2.ui.componentes.FilaDoble
 import com.example.pentametod2.ui.componentes.Segmentado
 import com.example.pentametod2.ui.componentes.TarjetaContorno
@@ -72,55 +80,71 @@ fun contadorEcuaciones(estado: EstadoSistema): String {
 }
 
 /**
- * Formulario en modo EDICIÓN: las tarjetas de datos del método con los botones "Cargar ejemplo" y "Calcular".
- * Sistemas: tarjetas "Ecuaciones" y "Parámetros"; el resto: una tarjeta "Datos".
+ * Formulario en modo EDICIÓN: las tarjetas de datos del método. "Cargar ejemplo" y "Calcular" van en [DockAcciones].
+ * Sistemas: tarjetas "Ecuaciones" y "Parámetros"; regresión polinomial: "datos" y "ajuste"; el resto: una tarjeta.
+ * [intentoFallido] sube cuando "Calcular" se pulsa con datos que [bloqueaCalculo] rechaza.
  */
 @Composable
 fun TarjetasEdicion(
     id: MetodoId,
     estado: EstadoFormulario,
-    calculando: Boolean,
     alCambiar: (EstadoFormulario) -> Unit,
-    alCargarEjemplo: () -> Unit,
-    alCalcular: () -> Unit,
+    intentoFallido: Int = 0,
 ) {
-    val botones = @Composable { BotonesDatos(calculando, alCargarEjemplo, alCalcular) }
     when (estado) {
-        is EstadoSistema -> FormularioSistema(estado, id == MetodoId.PUNTO_FIJO, alCambiar, botones)
-        is EstadoInterpolacion -> TarjetaDatos(botones) { FormularioInterpolacion(estado, alCambiar) }
-        is EstadoRegresionPolinomial -> TarjetaDatos(botones) { FormularioRegresionPolinomial(estado, alCambiar) }
-        is EstadoRegresionMultiple -> TarjetaDatos(botones) { FormularioRegresionMultiple(estado, alCambiar) }
+        is EstadoSistema -> FormularioSistema(estado, id == MetodoId.PUNTO_FIJO, alCambiar)
+        is EstadoInterpolacion -> TarjetaDatos { FormularioInterpolacion(estado, alCambiar) }
+        is EstadoRegresionPolinomial -> FormularioRegresionPolinomial(estado, alCambiar, intentoFallido)
+        is EstadoRegresionMultiple -> TarjetaDatos { FormularioRegresionMultiple(estado, alCambiar) }
     }
 }
 
-/** Con fuente grande (> 1.15×) los botones no caben lado a lado sin recortar el texto: se apilan. */
-fun apilarBotones(escalaFuente: Float): Boolean = escalaFuente > 1.15f
+/**
+ * true si "Calcular" no debe lanzar el cálculo porque el formulario ya sabe que los datos están mal
+ * (hoy solo la regresión polinomial valida antes; el resto deja los errores al motor).
+ */
+fun bloqueaCalculo(estado: EstadoFormulario): Boolean =
+    estado is EstadoRegresionPolinomial && estado.validacion() !is ValidacionPares.Ok
 
+/** Con fuente grande (> 1.15×) "Cargar ejemplo" pierde el ícono para que ambos botones quepan en el dock. */
+fun botonesSinIcono(escalaFuente: Float): Boolean = escalaFuente > 1.15f
+
+/**
+ * Barra fija inferior: borde superior de 1dp, fondo del tema, padding horizontal 16, "Cargar ejemplo" (texto)
+ * y "Calcular" (relleno). Respeta la barra de navegación y sube con el teclado (insets safeDrawing).
+ */
 @Composable
-private fun BotonesDatos(calculando: Boolean, alCargarEjemplo: () -> Unit, alCalcular: () -> Unit) {
-    val textoCalcular = if (calculando) "Calculando…" else "Calcular"
-    if (apilarBotones(LocalDensity.current.fontScale)) {
-        Column(verticalArrangement = Arrangement.spacedBy(Dimens.e12)) {
-            BotonPrimario(textoCalcular, alCalcular, Modifier.fillMaxWidth(), icono = Iconos.calculadora, habilitado = !calculando)
-            BotonSecundario("Cargar ejemplo", alCargarEjemplo, Modifier.fillMaxWidth(), icono = Iconos.ejemplo)
-        }
-    } else {
-        FilaDoble(Modifier.fillMaxWidth()) {
-            BotonSecundario("Cargar ejemplo", alCargarEjemplo, Modifier.weight(1f), icono = Iconos.ejemplo)
-            BotonPrimario(textoCalcular, alCalcular, Modifier.weight(1f), icono = Iconos.calculadora, habilitado = !calculando)
+fun DockAcciones(calculando: Boolean, alCargarEjemplo: () -> Unit, alCalcular: () -> Unit) {
+    val borde = MaterialTheme.colorScheme.outlineVariant
+    val sinIcono = botonesSinIcono(LocalDensity.current.fontScale)
+    Surface(color = MaterialTheme.colorScheme.background) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .drawBehind { drawLine(borde, Offset(0f, 0f), Offset(size.width, 0f), Dimens.borde.toPx()) }
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
+                .padding(horizontal = Dimens.margenLateral, vertical = Dimens.e8),
+        ) {
+            ContenidoCentrado {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Dimens.e12)) {
+                    BotonTexto("Cargar ejemplo", alCargarEjemplo, icono = if (sinIcono) null else Iconos.ejemplo)
+                    BotonPrimario(
+                        if (calculando) "Calculando…" else "Calcular",
+                        alCalcular,
+                        Modifier.weight(1f),
+                        icono = Iconos.calculadora,
+                        habilitado = !calculando,
+                    )
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun TarjetaDatos(botones: @Composable () -> Unit, campos: @Composable () -> Unit) {
-    TarjetaContorno(espacio = Dimens.e4) {
-        EtiquetaSeccion("Entrada")
-        TituloTarjeta("Datos")
-        Column(Modifier.fillMaxWidth().padding(top = Dimens.e12), verticalArrangement = Arrangement.spacedBy(Dimens.entreCampos)) {
-            campos()
-            botones()
-        }
+private fun TarjetaDatos(campos: @Composable () -> Unit) {
+    TarjetaContorno(espacio = Dimens.entreCampos) {
+        campos()
     }
 }
 
@@ -131,12 +155,10 @@ fun FormularioSistema(
     estado: EstadoSistema,
     puntoFijo: Boolean,
     alCambiar: (EstadoFormulario) -> Unit,
-    botones: @Composable () -> Unit,
 ) {
     val nombres = estado.nombresVariables()
     Column(verticalArrangement = Arrangement.spacedBy(Dimens.entreTarjetas)) {
         TarjetaContorno(espacio = Dimens.e4) {
-            EtiquetaSeccion("Entrada")
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                     TituloTarjeta("Ecuaciones")
@@ -178,7 +200,6 @@ fun FormularioSistema(
             }
             Text(INFO_NORMA, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             CajaInfo(if (puntoFijo) INFO_PUNTO_FIJO else INFO_NEWTON)
-            botones()
         }
     }
 }
@@ -200,17 +221,7 @@ fun FormularioInterpolacion(estado: EstadoInterpolacion, alCambiar: (EstadoFormu
     }
 }
 
-// ── Regresión polinomial ──
-
-@Composable
-fun FormularioRegresionPolinomial(estado: EstadoRegresionPolinomial, alCambiar: (EstadoFormulario) -> Unit) {
-    CampoTexto(estado.xs, { alCambiar(estado.copy(xs = it)) }, "Valores x", multilinea = true)
-    CampoTexto(estado.ys, { alCambiar(estado.copy(ys = it)) }, "Valores y", multilinea = true, ayuda = SUGERENCIA_FORMATO)
-    FilaDoble {
-        CampoTexto(estado.grado, { alCambiar(estado.copy(grado = it)) }, "Grado", Modifier.width(96.dp))
-        CampoTexto(estado.xPredecir, { alCambiar(estado.copy(xPredecir = it)) }, "x a predecir (opcional)", Modifier.weight(1f))
-    }
-}
+// La regresión polinomial está en FormularioPolinomial.kt.
 
 // ── Regresión múltiple ──
 

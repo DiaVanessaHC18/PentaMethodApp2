@@ -2,6 +2,7 @@ package com.example.pentametod2.ui.resultados
 
 import com.example.pentametod2.model.Bloque
 import com.example.pentametod2.model.BloqueMatriz
+import com.example.pentametod2.model.BloquePaso
 import com.example.pentametod2.model.BloqueTabla
 import com.example.pentametod2.model.BloqueTexto
 import com.example.pentametod2.model.Estado
@@ -99,10 +100,10 @@ fun esColumnaError(nombre: String): Boolean = nombre == "E" || nombre.startsWith
 /** Alto de fila: 36 en tablas de iteraciones, 40 en el resto. */
 fun esTablaIteraciones(t: BloqueTabla): Boolean = t.titulo == "Iteraciones"
 
-/** Para el vector de coeficientes "a": rótulos "← a₀", "← a₁", … */
+/** Para el vector de coeficientes "a" (o "β" en la regresión múltiple): rótulos "← a₀", "← a₁", … */
 fun rotulosCoeficientes(m: BloqueMatriz): List<String>? {
-    if (m.nombre != "a" || m.datos.any { it.size != 1 }) return null
-    return m.datos.indices.map { "← a" + subindiceTexto(it) }
+    if ((m.nombre != "a" && m.nombre != "β") || m.datos.any { it.size != 1 }) return null
+    return m.datos.indices.map { "← ${m.nombre}" + subindiceTexto(it) }
 }
 
 private fun subindiceTexto(n: Int): String = n.toString().map { "₀₁₂₃₄₅₆₇₈₉"[it - '0'] }.joinToString("")
@@ -126,3 +127,30 @@ fun partesConPorcentajes(texto: String): List<Pair<String, Boolean>> {
     if (i < texto.length) r += texto.substring(i) to false
     return r
 }
+
+// ── Pasos desplegables ──
+
+/** Pasos de la salida (vacío si el método aún usa el formato anterior). */
+fun pasosDe(s: SalidaMetodo): List<BloquePaso> = s.bloques.filterIsInstance<BloquePaso>()
+
+/** Con pasos, la pantalla omite la tarjeta de fórmulas y la de resumen: su contenido ya está en los pasos y la conclusión. */
+fun usaPasos(s: SalidaMetodo): Boolean = pasosDe(s).isNotEmpty()
+
+/** Una tabla que ya se muestra dentro de un paso no se repite debajo de la lista. */
+fun yaEnUnPaso(b: Bloque, s: SalidaMetodo): Boolean = b is BloqueTabla && pasosDe(s).any { p -> p.tablas.any { it === b } }
+
+/** Pasos abiertos, guardados como texto ("1,3") para rememberSaveable. */
+fun pasosIniciales(pasos: List<BloquePaso>): String = pasos.filter { it.abiertoInicial }.joinToString(",") { it.numero.toString() }
+
+fun pasosAbiertos(guardado: String): Set<Int> = guardado.split(',').mapNotNull { it.trim().toIntOrNull() }.toSet()
+
+/** Abre o cierra el paso `numero` sin tocar los demás. */
+fun alternarPaso(guardado: String, numero: Int): String {
+    val abiertos = pasosAbiertos(guardado)
+    val nuevos = if (numero in abiertos) abiertos - numero else abiertos + numero
+    return nuevos.sorted().joinToString(",")
+}
+
+/** Aviso bajo una tabla desplazable: con pasos se nombra el total ("Desliza para ver las 11 columnas →"). */
+fun textoDesliza(columnas: Int, conPasos: Boolean): String =
+    if (conPasos) "Desliza para ver las $columnas columnas →" else "Desliza para ver más columnas →"

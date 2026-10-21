@@ -133,7 +133,8 @@ val MaterialTheme.mono: EstilosMono
     @Composable @ReadOnlyComposable get() = LocalEstilosMono.current
 
 /**
- * ÚNICO punto de texto de fórmulas. Nunca se corta con "…": si la línea es larga se desplaza en horizontal.
+ * ÚNICO punto de texto de fórmulas. Nunca se corta con "…": si la línea es larga se desplaza en horizontal,
+ * o, con [ajustar], pasa a la línea siguiente (como `white-space: pre-wrap`; lo usan los pasos).
  * `secundaria` (p. ej. "Sistema normal: C·a = b") va en onSurfaceVariant.
  */
 @Composable
@@ -142,13 +143,14 @@ fun TextoFormula(
     modifier: Modifier = Modifier,
     secundaria: Boolean = false,
     color: Color = if (secundaria) MaterialTheme.colorScheme.onSurfaceVariant else LocalContentColor.current,
+    ajustar: Boolean = false,
 ) {
     Text(
         text = texto,
         style = MaterialTheme.mono.formula,
         color = color,
-        softWrap = false,
+        softWrap = ajustar,
         overflow = TextOverflow.Visible,
-        modifier = modifier.horizontalScroll(rememberScrollState()),
+        modifier = if (ajustar) modifier else modifier.horizontalScroll(rememberScrollState()),
     )
 }

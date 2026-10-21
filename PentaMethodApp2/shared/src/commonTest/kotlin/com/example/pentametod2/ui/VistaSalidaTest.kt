@@ -36,7 +36,18 @@ class VistaSalidaTest {
 
     @Test
     fun matricesConsecutivasEnUnaTarjeta() {
-        val e = agruparBloques(polinomial.bloques)
+        // Desde la Fase 8 ningún método deja matrices sueltas (van dentro de los pasos): se prueba el agrupado
+        // con la tabla y las cuatro matrices del formato anterior armadas a mano.
+        val unos = listOf(listOf(1.0))
+        val col = listOf(listOf(1.0), listOf(2.0), listOf(3.0))
+        val bloques = listOf(
+            com.example.pentametod2.model.BloqueTabla("Datos", listOf("i"), emptyList()),
+            BloqueMatriz("Matriz del sistema normal", "C", unos),
+            BloqueMatriz("Vector independiente", "b", unos),
+            BloqueMatriz("Inversa de C", "C⁻¹", unos),
+            BloqueMatriz("Coeficientes", "a", col),
+        )
+        val e = agruparBloques(bloques)
         val matrices = e.filterIsInstance<ElementoVista.Matrices>()
         assertEquals(1, matrices.size)
         assertEquals(listOf("C", "b", "C⁻¹", "a"), matrices[0].matrices.map { it.nombre })

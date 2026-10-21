@@ -1,9 +1,6 @@
 package com.example.pentametod2.ui.resultados
 
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -17,7 +14,6 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.layout.Spacer
@@ -26,7 +22,17 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import com.example.pentametod2.exportar.ExportadorArchivos
+import com.example.pentametod2.exportar.Exportaciones
+import com.example.pentametod2.exportar.ResultadoGuardado
+import com.example.pentametod2.exportar.TipoExportacion
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -40,20 +46,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.scale
-import androidx.compose.ui.graphics.vector.PathParser
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.pentametod2.catalogo.Catalogo
+import com.example.pentametod2.catalogo.Entrada
 import com.example.pentametod2.catalogo.MetodoInfo
 import com.example.pentametod2.model.MetodoId
 import com.example.pentametod2.model.SalidaMetodo
@@ -67,19 +65,39 @@ import com.example.pentametod2.ui.formularios.EstadoFormulario
 import com.example.pentametod2.ui.formularios.FormularioOpcionalSaver
 import com.example.pentametod2.ui.formularios.FormularioSaver
 import com.example.pentametod2.ui.formularios.LineaEntrada
+import com.example.pentametod2.ui.formularios.DockAcciones
 import com.example.pentametod2.ui.formularios.TarjetasEdicion
+import com.example.pentametod2.ui.formularios.bloqueaCalculo
+import com.example.pentametod2.ui.formularios.conVistaDe
 import com.example.pentametod2.ui.formularios.estadoDesdeEntrada
 import com.example.pentametod2.ui.formularios.estadoInicial
 import com.example.pentametod2.ui.formularios.resumenEntrada
 import com.example.pentametod2.ui.tema.Dimens
 import com.example.pentametod2.ui.tema.Formas
 import com.example.pentametod2.ui.tema.Iconos
+import com.example.pentametod2.ui.tema.Icono
 import com.example.pentametod2.ui.tema.mono
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 const val TEXTO_GUIA = "Escribe tus datos y pulsa Calcular, o carga un ejemplo."
 const val TEXTO_GUIA_PIE = "Aquí verás la fórmula, el resumen, la gráfica y la tabla de pasos."
+const val TEXTO_AYUDA_RESULTADO = "Verás fórmula, resumen, gráfica y tabla de pasos."
+
+/** Frase corta de cada método para el subtítulo de la barra (derivada de su descripción del catálogo). */
+private val FRASES_CORTAS = mapOf(
+    MetodoId.PUNTO_FIJO to "itera x = G(x)",
+    MetodoId.NEWTON_SISTEMAS to "usa el jacobiano",
+    MetodoId.REGRESION_POLINOMIAL to "mínimos cuadrados",
+    MetodoId.REGRESION_MULTIPLE to "y en función de x₁…xₖ",
+    MetodoId.LAGRANGE to "pasa por cada punto",
+    MetodoId.NEWTON_INTERPOLACION to "diferencias divididas",
+)
+
+/** "Ajuste de curvas · mínimos cuadrados"; solo la sección si el método no tiene frase corta. */
+fun subtituloMetodo(info: MetodoInfo): String = FRASES_CORTAS[info.id]?.let { "${info.seccion} · $it" } ?: info.seccion
 
 /**
  * Pantalla de un método con dos estados:
@@ -99,6 +117,13 @@ fun MetodoScreen(info: MetodoInfo, alVolver: () -> Unit, alAbrirMetodo: (MetodoI
     var ayuda by rememberSaveable { mutableStateOf(false) }
     var salida by remember { mutableStateOf<SalidaMetodo?>(null) }
     var calculando by remember { mutableStateOf(false) }
+    var intentoFallido by remember { mutableIntStateOf(0) }
+    val enEdicion = editando || calculado == null
+    val avisos = remember { SnackbarHostState() }
+    val alcance = rememberCoroutineScope()
+    val exportador = LocalExportador.current
+    @Suppress("DEPRECATION") // LocalClipboard (la API nueva) necesita un ClipEntry que solo se construye por plataforma.
+    val portapapeles = LocalClipboardManager.current
 
     LaunchedEffect(numCalculo) {
         val datos = calculado ?: return@LaunchedEffect
@@ -108,7 +133,51 @@ fun MetodoScreen(info: MetodoInfo, alVolver: () -> Unit, alAbrirMetodo: (MetodoI
     }
 
     Scaffold(
-        topBar = { BarraSuperior(info.nombre, alVolver, alAyuda = { ayuda = true }, cargando = calculando) },
+        topBar = {
+            val s = salida
+            BarraSuperior(
+                info.nombre,
+                alVolver,
+                subtitulo = subtituloMetodo(info),
+                alAyuda = { ayuda = true },
+                cargando = calculando,
+                // Con resultado, el "?" se cambia por el menú de guardar/exportar (que incluye la ayuda).
+                // Si no se calculó nada (error de entrada), sigue el "?".
+                accion = if (s == null || Exportaciones.sinCalculo(s)) null else {
+                    {
+                        MenuResultados(s) { accion ->
+                            when (accion) {
+                                AccionMenu.AYUDA -> ayuda = true
+                                AccionMenu.COPIAR -> {
+                                    portapapeles.setText(AnnotatedString(textoParaCopiar(s)))
+                                    alcance.launch { avisos.showSnackbar(TEXTO_COPIADO) }
+                                }
+                                AccionMenu.EXCEL -> alcance.launch { exportar(s, calculado?.aEntrada(), TipoExportacion.EXCEL, exportador, avisos) }
+                                AccionMenu.OCTAVE -> alcance.launch { exportar(s, calculado?.aEntrada(), TipoExportacion.OCTAVE, exportador, avisos) }
+                            }
+                        }
+                    }
+                },
+            )
+        },
+        snackbarHost = { SnackbarHost(avisos) },
+        bottomBar = {
+            if (enEdicion) {
+                DockAcciones(
+                    calculando = calculando,
+                    alCargarEjemplo = { formulario = estadoDesdeEntrada(Catalogo.ejemplo(id)).conVistaDe(formulario) },
+                    alCalcular = {
+                        if (bloqueaCalculo(formulario)) {
+                            intentoFallido++
+                        } else {
+                            calculado = formulario
+                            editando = false
+                            numCalculo++
+                        }
+                    },
+                )
+            }
+        },
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
     ) { padding ->
@@ -122,20 +191,13 @@ fun MetodoScreen(info: MetodoInfo, alVolver: () -> Unit, alAbrirMetodo: (MetodoI
         ) {
             ContenidoCentrado(Modifier.padding(horizontal = Dimens.margenLateral, vertical = Dimens.e8)) {
                 Column(verticalArrangement = Arrangement.spacedBy(Dimens.entreTarjetas)) {
-                    ChipCategoria(info.seccion)
                     val datosCalculados = calculado
-                    if (editando || datosCalculados == null) {
+                    if (enEdicion || datosCalculados == null) {
                         TarjetasEdicion(
                             id = id,
                             estado = formulario,
-                            calculando = calculando,
                             alCambiar = { formulario = it },
-                            alCargarEjemplo = { formulario = estadoDesdeEntrada(Catalogo.ejemplo(id)) },
-                            alCalcular = {
-                                calculado = formulario
-                                editando = false
-                                numCalculo++
-                            },
+                            intentoFallido = intentoFallido,
                         )
                     } else {
                         TarjetaEntradaComprimida(resumenEntrada(id, datosCalculados)) { editando = true }
@@ -143,7 +205,7 @@ fun MetodoScreen(info: MetodoInfo, alVolver: () -> Unit, alAbrirMetodo: (MetodoI
 
                     val s = salida
                     if (s == null) {
-                        if (!calculando) EstadoVacio()
+                        if (!calculando) LineaAyuda()
                     } else {
                         ResultadosMetodo(
                             salida = s,
@@ -161,24 +223,44 @@ fun MetodoScreen(info: MetodoInfo, alVolver: () -> Unit, alAbrirMetodo: (MetodoI
     if (ayuda) DialogoAyuda(info) { ayuda = false }
 }
 
-/** Chip de categoría: alto 32, radio 8, borde 1dp outlineVariant, texto 14/500 onSurfaceVariant. */
-@Composable
-private fun ChipCategoria(texto: String) {
-    Surface(
-        shape = Formas.chip,
-        color = Color.Transparent,
-        border = BorderStroke(Dimens.borde, MaterialTheme.colorScheme.outlineVariant),
-        modifier = Modifier.heightIn(min = Dimens.chipCategoria),
-    ) {
-        Box(Modifier.padding(horizontal = Dimens.e12, vertical = 6.dp), contentAlignment = Alignment.Center) {
-            Text(
-                texto,
-                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+/**
+ * Genera el archivo (fuera del hilo principal), abre el selector de la plataforma y avisa con un Snackbar:
+ * "Guardado: <nombre>" con ABRIR si se puede; nada si se canceló; "No se pudo guardar el archivo" si falló.
+ */
+private suspend fun exportar(
+    s: SalidaMetodo,
+    entrada: Entrada?,
+    tipo: TipoExportacion,
+    exportador: ExportadorArchivos,
+    avisos: SnackbarHostState,
+) {
+    val bytes = try {
+        withContext(Dispatchers.Default) { Exportaciones.contenido(s, tipo, entrada) }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        avisos.showSnackbar(TEXTO_ERROR_GUARDADO)
+        return
+    }
+    when (val r = exportador.guardar(Exportaciones.nombreArchivo(s, tipo), tipo.mime, bytes)) {
+        is ResultadoGuardado.Guardado -> {
+            val abrir = r.abrir
+            val respuesta = avisos.showSnackbar(
+                "Guardado: ${r.nombre}",
+                actionLabel = if (abrir != null) "ABRIR" else null,
+                duration = SnackbarDuration.Long,
             )
+            if (respuesta == SnackbarResult.ActionPerformed && abrir != null && !abrir()) {
+                avisos.showSnackbar("No hay una app para abrir este archivo")
+            }
         }
+        ResultadoGuardado.Cancelado -> Unit
+        is ResultadoGuardado.Error -> avisos.showSnackbar(TEXTO_ERROR_GUARDADO)
+        ResultadoGuardado.NoDisponible -> avisos.showSnackbar("Guardar archivos aún no está disponible en esta plataforma")
     }
 }
+
+const val TEXTO_ERROR_GUARDADO = "No se pudo guardar el archivo"
 
 /** Datos en modo RESULTADO: solo lectura, con "Editar". */
 @Composable
@@ -207,65 +289,32 @@ private fun TarjetaEntradaComprimida(lineas: List<LineaEntrada>, alEditar: () ->
     }
 }
 
-/** Estado vacío: borde punteado 1dp outlineVariant, radio 16, padding 28/24, ilustración de 56dp. */
+/** Ayuda de una fila mientras no hay resultado: borde punteado 1dp outlineVariant, radio 12, ícono ⓘ de 16. */
 @Composable
-private fun EstadoVacio() {
+private fun LineaAyuda() {
     val borde = MaterialTheme.colorScheme.outlineVariant
-    Box(
+    Row(
         Modifier
             .fillMaxWidth()
             .drawBehind {
-                val r = 16.dp.toPx()
+                val r = 12.dp.toPx()
                 drawRoundRect(
                     color = borde,
                     cornerRadius = CornerRadius(r, r),
-                    style = Stroke(width = 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 4.dp.toPx()))),
+                    style = Stroke(width = Dimens.borde.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 4.dp.toPx()))),
                 )
             }
-            .padding(horizontal = Dimens.e24, vertical = 28.dp),
-        contentAlignment = Alignment.Center,
+            .padding(horizontal = Dimens.e12, vertical = Dimens.e12),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Dimens.e8),
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Dimens.e12)) {
-            IlustracionVacia()
-            val fuerte = MaterialTheme.colorScheme.onSurface
-            Text(
-                buildAnnotatedString {
-                    append("Escribe tus datos y pulsa ")
-                    withStyle(SpanStyle(fontWeight = FontWeight.SemiBold, color = fuerte)) { append("Calcular") }
-                    append(", o carga un ejemplo.")
-                },
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
-            Text(
-                TEXTO_GUIA_PIE,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
-        }
-    }
-}
-
-private val TRAZOS_ILUSTRACION = listOf("M8 46h40", "M10 46V8")
-private const val CURVA_ILUSTRACION = "M12 12c8 10 18 22 32 26"
-private val PUNTOS_ILUSTRACION = listOf(16f to 16f, 24f to 22f, 32f to 32f, 40f to 36f)
-
-/** Ilustración del estado vacío (viewBox 56×56, trazo 1.5, outline; curva punteada en primary). */
-@Composable
-private fun IlustracionVacia() {
-    val linea = MaterialTheme.colorScheme.outline
-    val curva = MaterialTheme.colorScheme.primary
-    val ejes = remember { TRAZOS_ILUSTRACION.map { PathParser().parsePathString(it).toPath() } }
-    val trazoCurva = remember { PathParser().parsePathString(CURVA_ILUSTRACION).toPath() }
-    Canvas(Modifier.size(56.dp)) {
-        val f = size.width / 56f
-        scale(f, f, pivot = androidx.compose.ui.geometry.Offset.Zero) {
-            for (p in ejes) drawPath(p, linea, style = Stroke(1.5f, cap = StrokeCap.Round))
-            drawPath(trazoCurva, curva, style = Stroke(1.5f, cap = StrokeCap.Round, pathEffect = PathEffect.dashPathEffect(floatArrayOf(3f, 3f))))
-            for ((x, y) in PUNTOS_ILUSTRACION) drawCircle(linea, 2f, androidx.compose.ui.geometry.Offset(x, y), style = Stroke(1.5f))
-        }
+        Icono(Iconos.info, null, tamano = Dimens.iconoInfo, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            TEXTO_AYUDA_RESULTADO,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
     }
 }
 

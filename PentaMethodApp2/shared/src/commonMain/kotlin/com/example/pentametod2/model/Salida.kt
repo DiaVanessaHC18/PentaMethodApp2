@@ -13,6 +13,8 @@ data class SalidaMetodo(
     val bloques: List<Bloque>,
     val advertencias: List<String>,
     val error: String?,
+    /** Datos de entrada ya leídos, para exportar (Octave, Excel). null si el método aún no exporta. */
+    val exportable: DatosExportables? = null,
 ) {
     companion object {
         fun conError(metodo: MetodoId, mensaje: String) = SalidaMetodo(
@@ -71,6 +73,58 @@ data class BloqueMatriz(
 ) : Bloque
 
 data class BloqueGrupo(val titulo: String, val bloques: List<Bloque>, val colapsado: Boolean = true) : Bloque
+
+/** Una línea de la franja de resultado de un paso: "Q = 0.905143". `valor` es el número exacto (para exportar). */
+data class ResultadoPaso(val etiqueta: String, val texto: String, val valor: Double? = null)
+
+/**
+ * Paso desplegable de la explicación: explicación (una frase) → FÓRMULA → CON TUS DATOS (líneas mono, matrices
+ * y/o tablas) → franja de resultado. `resumenCorto` se ve en la fila cerrada; `destacado` lo pinta en terracota.
+ * Una tabla de `tablas` que también esté en [SalidaMetodo.bloques] no se repite debajo de la lista.
+ */
+data class BloquePaso(
+    val numero: Int,
+    val titulo: String,
+    val explicacion: String,
+    val formulaGeneral: List<String>,
+    val conTusDatos: List<String>,
+    val matrices: List<BloqueMatriz> = emptyList(),
+    val tablas: List<BloqueTabla> = emptyList(),
+    val resultados: List<ResultadoPaso>,
+    val resumenCorto: String,
+    val abiertoInicial: Boolean = false,
+    val destacado: Boolean = false,
+) : Bloque
+
+// ── Exportación ──
+
+/** Datos ya leídos (los mismos que usó el método) que necesitan los exportadores. */
+sealed interface DatosExportables {
+    data class RegresionPolinomial(val x: List<Double>, val y: List<Double>, val grado: Int, val xPredecir: Double?) : DatosExportables
+
+    /** `x[i]` = [x₁ᵢ, …, xₖᵢ]. */
+    data class RegresionMultiple(val x: List<List<Double>>, val y: List<Double>, val xPredecir: List<Double>?) : DatosExportables
+
+    /** Nodos usados (en automático, los elegidos); `nodosDados` = cuántos escribió el alumno. */
+    data class Interpolacion(
+        val xs: List<Double>,
+        val ys: List<Double>,
+        val x: Double,
+        val automatico: Boolean = false,
+        val nodosDados: Int = xs.size,
+    ) : DatosExportables {
+        val grado: Int get() = xs.size - 1
+    }
+
+    /** `expresiones[i]`: Gᵢ (punto fijo, xᵢ = Gᵢ) o Fᵢ (Newton, Fᵢ = 0), tal como las escribió el alumno. */
+    data class Sistema(
+        val variables: List<String>,
+        val expresiones: List<String>,
+        val x0: List<Double>,
+        val tolerancia: Double?,
+        val maxIter: Int?,
+    ) : DatosExportables
+}
 
 // ── Gráfica ──
 

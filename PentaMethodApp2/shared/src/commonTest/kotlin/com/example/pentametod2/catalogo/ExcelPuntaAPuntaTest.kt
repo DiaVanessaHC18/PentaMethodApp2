@@ -81,7 +81,9 @@ class ExcelPuntaAPuntaTest {
     fun regresionMultipleEjemplo() {
         val s = ejecutar(MetodoId.REGRESION_MULTIPLE, Catalogo.ejemplo(MetodoId.REGRESION_MULTIPLE))
         assertEquals("y = 5.000000 + 4.000000x₁ − 3.000000x₂", s.valor("Ecuación"))
-        val a = assertNotNull(s.bloques.filterIsInstance<BloqueMatriz>().firstOrNull { it.nombre == "a" }, "Falta la matriz a")
+        // Desde la Fase 8 los coeficientes van en el paso "Modelo y sistema normal" con el nombre β.
+        val matrices = s.bloques.filterIsInstance<com.example.pentametod2.model.BloquePaso>().flatMap { it.matrices }
+        val a = assertNotNull(matrices.firstOrNull { it.nombre == "β" }, "Falta el vector β")
         val mostrados = a.datos.map { com.example.pentametod2.model.Formato.auto(it.single(), a.decimales) }
         for ((esperado, m) in listOf(5.0, 4.0, -3.0).zip(mostrados)) assertMuestra(esperado, m, "coeficiente")
         assertEquals("1.000000", s.valor("R²"))

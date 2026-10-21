@@ -48,10 +48,10 @@ private fun resumenInterpolacion(e: EstadoInterpolacion): List<LineaEntrada> {
 }
 
 private fun resumenPolinomial(e: EstadoRegresionPolinomial): List<LineaEntrada> {
-    val grado = e.grado.trim() + if (e.xPredecir.isBlank()) "" else " · x a predecir ${e.xPredecir.trim()}"
+    val grado = e.gradoEfectivo().toString() + if (e.xPredecir.isBlank()) "" else " · x a predecir ${e.xPredecir.trim()}"
     return listOf(
-        LineaEntrada("x", listaLegible(e.xs)),
-        LineaEntrada("y", listaLegible(e.ys)),
+        LineaEntrada("x", tablaALista(e.xs)),
+        LineaEntrada("y", tablaALista(e.ys)),
         LineaEntrada("Grado", grado),
     )
 }

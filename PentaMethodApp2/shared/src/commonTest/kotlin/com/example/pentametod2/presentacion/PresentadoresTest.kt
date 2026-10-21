@@ -5,6 +5,7 @@ import com.example.pentametod2.methods.Regresion
 import com.example.pentametod2.methods.SistemasNoLineales
 import com.example.pentametod2.model.BloqueGrupo
 import com.example.pentametod2.model.BloqueMatriz
+import com.example.pentametod2.model.BloquePaso
 import com.example.pentametod2.model.BloqueTabla
 import com.example.pentametod2.model.BloqueTexto
 import com.example.pentametod2.model.Celda
@@ -107,7 +108,8 @@ class PresentadoresTest {
         val conclusion = s.bloques.filterIsInstance<BloqueTexto>().single { it.tipo == TipoTexto.CONCLUSION }
         assertTrue(conclusion.texto.contains("97.43%"), conclusion.texto)
         assertTrue(conclusion.texto.contains("Ajuste muy bueno"), conclusion.texto)
-        assertEquals(listOf("C", "b", "C⁻¹", "a"), s.bloques.filterIsInstance<BloqueMatriz>().map { it.nombre })
+        // Desde la Fase 7 las matrices van dentro del paso "Sistema normal".
+        assertEquals(listOf("C", "b", "C⁻¹", "a"), s.bloques.filterIsInstance<BloquePaso>().first().matrices.map { it.nombre })
 
         val t = s.tabla("Datos y sumatorias")
         assertTrue(t.filaTotal)

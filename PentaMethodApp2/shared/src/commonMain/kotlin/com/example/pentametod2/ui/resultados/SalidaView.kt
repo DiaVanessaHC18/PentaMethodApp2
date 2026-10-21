@@ -43,12 +43,9 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.AnnotatedString
@@ -65,6 +62,7 @@ import androidx.compose.ui.unit.dp
 import com.example.pentametod2.model.Bloque
 import com.example.pentametod2.model.BloqueGrupo
 import com.example.pentametod2.model.BloqueMatriz
+import com.example.pentametod2.model.BloquePaso
 import com.example.pentametod2.model.BloqueTabla
 import com.example.pentametod2.model.BloqueTexto
 import com.example.pentametod2.model.Celda
@@ -77,7 +75,6 @@ import com.example.pentametod2.model.SalidaMetodo
 import com.example.pentametod2.model.TipoTexto
 import com.example.pentametod2.ui.componentes.AccionBanner
 import com.example.pentametod2.ui.componentes.BannerEstado
-import com.example.pentametod2.ui.componentes.BotonSecundario
 import com.example.pentametod2.ui.componentes.ChipEstado
 import com.example.pentametod2.ui.componentes.EtiquetaSeccion
 import com.example.pentametod2.ui.componentes.FilaResumen
@@ -94,15 +91,19 @@ import com.example.pentametod2.ui.tema.extendidos
 import com.example.pentametod2.ui.tema.mono
 
 /**
- * Resultados del diseño, en orden: EXPLICACIÓN (fórmula colapsable) → separador RESULTADOS + chip →
- * banners → Resumen → Gráfica → tablas, matrices, textos y grupos → "Copiar resultados".
+ * Resultados, en dos formatos:
+ *  - Con pasos (regresión polinomial): separador PASOS + chip → banners → lista de pasos → Gráfica →
+ *    tablas → Conclusión. No se muestran la tarjeta de fórmulas ni la de resumen (están en los pasos).
+ *  - Anterior (los demás métodos): EXPLICACIÓN → RESULTADOS + chip → banners → Resumen → Gráfica → bloques.
+ * "Copiar resultados" está en el menú de la barra superior.
  */
 @Composable
 fun ResultadosMetodo(salida: SalidaMetodo, alEditar: () -> Unit, alAbrirMetodo: (MetodoId) -> Unit, claveCalculo: Int) {
     var avisoDescartado by remember(claveCalculo) { mutableStateOf(false) }
+    val conPasos = usaPasos(salida)
     Column(verticalArrangement = Arrangement.spacedBy(Dimens.entreTarjetas)) {
-        if (salida.formulas.isNotEmpty()) TarjetaExplicacion(salida.formulas)
-        SeparadorResultados(salida)
+        if (!conPasos && salida.formulas.isNotEmpty()) TarjetaExplicacion(salida.formulas)
+        SeparadorResultados(salida, if (conPasos) "Pasos" else "Resultados")
         if (salida.estado == Estado.ERROR) {
             val (titulo, acciones) = bannerError(salida)
             BannerEstado(
@@ -114,11 +115,12 @@ fun ResultadosMetodo(salida: SalidaMetodo, alEditar: () -> Unit, alAbrirMetodo: 
         if (avisos != null && !avisoDescartado) {
             BannerEstado(TipoBanner.AVISO, avisos.first, avisos.second, acciones = listOf(AccionBanner("Entendido") { avisoDescartado = true }))
         }
-        if (salida.resumen.isNotEmpty()) TarjetaResumen(salida)
+        if (conPasos) ListaPasos(pasosDe(salida), claveCalculo)
+        if (!conPasos && salida.resumen.isNotEmpty()) TarjetaResumen(salida)
         val g = salida.grafica
         if (g != null) GraficaView(g)
-        for (e in agruparBloques(salida.bloques.filterNot { ocultarBloque(it, salida) })) ElementoView(e, salida)
-        if (salida.resumen.isNotEmpty() || salida.bloques.isNotEmpty()) BotonCopiar(salida)
+        val resto = salida.bloques.filterNot { ocultarBloque(it, salida) || it is BloquePaso || yaEnUnPaso(it, salida) }
+        for (e in agruparBloques(resto)) ElementoView(e, salida, conPasos)
     }
 }
 
@@ -200,10 +202,10 @@ private fun CajaFormula(lineas: List<String>) {
 // ── 2. Separador ──
 
 @Composable
-private fun SeparadorResultados(s: SalidaMetodo) {
+private fun SeparadorResultados(s: SalidaMetodo, etiqueta: String) {
     val (texto, tipo) = chipResultados(s)
     Row(Modifier.fillMaxWidth().padding(top = Dimens.e8), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Dimens.e12)) {
-        EtiquetaSeccion("Resultados", Modifier.semantics { heading() })
+        EtiquetaSeccion(etiqueta, Modifier.semantics { heading() })
         HorizontalDivider(Modifier.weight(1f), thickness = Dimens.borde, color = MaterialTheme.colorScheme.outlineVariant)
         ChipEstado(texto, tipo)
     }
@@ -243,20 +245,21 @@ private fun FilaResumenSalida(item: ItemResumen, s: SalidaMetodo) {
 // ── 6–9. Bloques ──
 
 @Composable
-private fun ElementoView(e: ElementoVista, s: SalidaMetodo) {
+private fun ElementoView(e: ElementoVista, s: SalidaMetodo, conPasos: Boolean = false) {
     when (e) {
         is ElementoVista.Matrices -> TarjetaMatrices(e.matrices)
-        is ElementoVista.Simple -> BloqueView(e.bloque, s)
+        is ElementoVista.Simple -> BloqueView(e.bloque, s, conPasos)
     }
 }
 
 @Composable
-private fun BloqueView(b: Bloque, s: SalidaMetodo) {
+private fun BloqueView(b: Bloque, s: SalidaMetodo, conPasos: Boolean = false) {
     when (b) {
         is BloqueTexto -> TextoView(b)
-        is BloqueTabla -> TarjetaTabla(b, s)
+        is BloqueTabla -> TarjetaTabla(b, s, conPasos)
         is BloqueMatriz -> TarjetaMatrices(listOf(b))
         is BloqueGrupo -> GrupoView(b, s)
+        is BloquePaso -> ListaPasos(listOf(b), claveCalculo = 0) // normalmente van todos juntos en ResultadosMetodo
     }
 }
 
@@ -314,18 +317,18 @@ private fun BarraR2(progreso: Double, color: Color) {
 // ── Tabla con primera columna fija ──
 
 @Composable
-private fun TarjetaTabla(b: BloqueTabla, s: SalidaMetodo) {
+private fun TarjetaTabla(b: BloqueTabla, s: SalidaMetodo, conPasos: Boolean) {
     TarjetaContorno {
         Row(verticalAlignment = Alignment.CenterVertically) {
             TituloTarjeta(b.titulo, Modifier.weight(1f))
             Text("${b.columnas.size} columnas", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        TablaView(b, marcarUltimaFila(b, s))
+        TablaView(b, marcarUltimaFila(b, s), textoDesliza(b.columnas.size, conPasos))
     }
 }
 
 @Composable
-private fun TablaView(b: BloqueTabla, ultimaConError: Boolean) {
+internal fun TablaView(b: BloqueTabla, ultimaConError: Boolean, aviso: String) {
     val (filas, ocultas) = remember(b) { filasVisibles(b) }
     val textos = remember(b) { filas.map { f -> f.map { textoCelda(it, b.decimales) } } }
     val estiloCelda = MaterialTheme.mono.tabla.copy(textAlign = TextAlign.End)
@@ -352,7 +355,7 @@ private fun TablaView(b: BloqueTabla, ultimaConError: Boolean) {
                 filas.forEachIndexed { i, _ -> Celdas(b, filas, textos, i, 1 until b.columnas.size, anchos, altoFila, ultimaConError) }
             }
         }
-        if (scroll.maxValue > 0) IndicadorDesplazamiento(scroll)
+        if (scroll.maxValue > 0) IndicadorDesplazamiento(scroll, aviso)
         if (ocultas > 0) {
             Text(
                 "Se muestran las primeras $MAX_FILAS_TABLA filas; hay $ocultas más (usa \"Copiar resultados\" para verlas todas).",
@@ -426,7 +429,7 @@ private fun Celdas(
 
 /** Barra de 4dp: pista de 120dp en surfaceContainerHigh con relleno outline proporcional + texto. */
 @Composable
-private fun IndicadorDesplazamiento(scroll: ScrollState) {
+private fun IndicadorDesplazamiento(scroll: ScrollState, aviso: String) {
     val pista = 120.dp
     val total = (scroll.viewportSize + scroll.maxValue).coerceAtLeast(1)
     val fraccionVisible = scroll.viewportSize.toFloat() / total
@@ -436,7 +439,7 @@ private fun IndicadorDesplazamiento(scroll: ScrollState) {
         Box(Modifier.width(pista).height(4.dp).clip(RoundedCornerShape(2.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh)) {
             Box(Modifier.offset(x = desplazamiento).width(relleno).height(4.dp).clip(RoundedCornerShape(2.dp)).background(MaterialTheme.colorScheme.outline))
         }
-        Text("Desliza para ver más columnas →", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(aviso, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -473,7 +476,7 @@ private fun TarjetaMatrices(matrices: List<BloqueMatriz>) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ContenidoMatrices(matrices: List<BloqueMatriz>) {
+internal fun ContenidoMatrices(matrices: List<BloqueMatriz>) {
     val normales = matrices.filter { rotulosCoeficientes(it) == null }
     val coeficientes = matrices.filter { rotulosCoeficientes(it) != null }
     SelectionContainer {
@@ -588,29 +591,6 @@ private fun GrupoView(b: BloqueGrupo, s: SalidaMetodo) {
                     }
                 }
             }
-        }
-    }
-}
-
-// ── Copiar ──
-
-@Suppress("DEPRECATION") // LocalClipboard (la API nueva) necesita un ClipEntry que solo se construye por plataforma.
-@Composable
-private fun BotonCopiar(salida: SalidaMetodo) {
-    val portapapeles = LocalClipboardManager.current
-    var copiado by remember(salida) { mutableStateOf(false) }
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Dimens.e12)) {
-        BotonSecundario("Copiar resultados", {
-            portapapeles.setText(AnnotatedString(textoParaCopiar(salida)))
-            copiado = true
-        })
-        if (copiado) {
-            Text(
-                "Copiado: resumen y tablas, separados por tabulaciones.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite },
-            )
         }
     }
 }

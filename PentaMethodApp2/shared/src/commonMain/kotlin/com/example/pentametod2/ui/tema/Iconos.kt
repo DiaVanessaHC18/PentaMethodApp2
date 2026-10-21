@@ -54,10 +54,17 @@ object Iconos {
     )
     val quitar = DefIcono("quitar", listOf(CIRCULO, "M8 12h8"))
     val agregar = DefIcono("agregar", listOf("M12 5v14", "M5 12h14"), grosor = 2f)
+    val guardar = DefIcono("guardar", listOf("M12 4v11", "M7.5 10.5L12 15l4.5-4.5", "M5 19h14"))
+    val hoja = DefIcono("hoja", listOf("M4 5h16v14H4z", "M4 10h16", "M4 14.5h16", "M10 5v14"))
+    val codigo = DefIcono("codigo", listOf("M9 8l-4 4 4 4", "M15 8l4 4-4 4"))
+    val copiar = DefIcono("copiar", listOf("M9 9h10v10H9z", "M5 15V5h10"))
+    val cerrar = DefIcono("cerrar", listOf("M6 6l12 12", "M18 6L6 18"))
+    val pegar = DefIcono("pegar", listOf("M9 4h6v3H9z", "M9 5.5H6.5A1.5 1.5 0 0 0 5 7v12.5A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5V7a1.5 1.5 0 0 0-1.5-1.5H15"))
 
     val todos: List<DefIcono> = listOf(
         atras, info, ayuda, chevronDerecha, chevronArriba, editar, ejemplo, calculadora,
-        check, checkCirculo, errorOctogono, avisoTriangulo, quitar, agregar,
+        check, checkCirculo, errorOctogono, avisoTriangulo, quitar, agregar, cerrar, pegar,
+        guardar, hoja, codigo, copiar,
     )
 }
 

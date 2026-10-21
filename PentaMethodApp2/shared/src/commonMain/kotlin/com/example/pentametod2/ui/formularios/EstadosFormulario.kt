@@ -84,13 +84,68 @@ data class EstadoInterpolacion(
 
 // ── Regresión polinomial ──
 
+enum class VistaDatos { LISTA, TABLA }
+
+/**
+ * Fuente de verdad única de los puntos: listas de textos x e y (en Lista, los valores ya separados; en Tabla,
+ * las celdas, que pueden estar vacías). `grado` vacío = aún no elegido (se usa [ajustarGrado]).
+ */
 data class EstadoRegresionPolinomial(
-    val xs: String = "",
-    val ys: String = "",
-    val grado: String = "1",
+    val xs: List<String> = emptyList(),
+    val ys: List<String> = emptyList(),
+    val grado: String = "",
     val xPredecir: String = "",
+    val vista: VistaDatos = VistaDatos.LISTA,
 ) : EstadoFormulario {
-    override fun aEntrada(): Entrada = EntradaRegresionPolinomial(xs, ys, grado, xPredecir)
+    /** Desde los textos de las listas ("1, 2, 3"). */
+    constructor(xs: String, ys: String, grado: String, xPredecir: String) :
+        this(valoresDeTexto(xs), valoresDeTexto(ys), grado, xPredecir)
+
+    override fun aEntrada(): Entrada =
+        EntradaRegresionPolinomial(unir(xs), unir(ys), gradoEfectivo().toString(), xPredecir)
+
+    private fun unir(l: List<String>) = l.map { it.trim() }.filter { it.isNotEmpty() }.joinToString(",")
+
+    fun puntos(): Int = puntosValidos(xs, ys)
+
+    fun gradoEfectivo(): Int = ajustarGrado(grado.trim().toIntOrNull(), puntos())
+
+    fun validacion(): ValidacionPares = validarParesXY(xs, ys)
+
+    /** Si el grado elegido ya no cabe (se quitaron puntos), baja al máximo permitido. */
+    fun conGradoAjustado(): EstadoRegresionPolinomial {
+        val elegido = grado.trim().toIntOrNull() ?: return this
+        val ajustado = ajustarGrado(elegido, puntos())
+        return if (ajustado == elegido) this else copy(grado = ajustado.toString())
+    }
+
+    /** Lista → Tabla rellena con celdas vacías; Tabla → Lista descarta las vacías. */
+    fun conVista(v: VistaDatos): EstadoRegresionPolinomial {
+        if (v == vista) return this
+        return when (v) {
+            VistaDatos.TABLA -> listaATabla(xs, ys).let { (x, y) -> copy(xs = x, ys = y, vista = v) }
+            VistaDatos.LISTA -> copy(xs = valoresDeTexto(tablaALista(xs)), ys = valoresDeTexto(tablaALista(ys)), vista = v)
+        }
+    }
+
+    fun conCelda(fila: Int, columna: Columna, texto: String): EstadoRegresionPolinomial {
+        val (x, y) = listaATabla(xs, ys, fila + 1)
+        return if (columna == Columna.X) copy(xs = x.cambiar(fila, texto), ys = y) else copy(xs = x, ys = y.cambiar(fila, texto))
+    }
+
+    fun agregarPunto(): EstadoRegresionPolinomial {
+        val (x, y) = listaATabla(xs, ys, 0)
+        return copy(xs = x + "", ys = y + "")
+    }
+
+    /** Quita la fila `i` (queda al menos una). */
+    fun quitarPunto(i: Int): EstadoRegresionPolinomial {
+        val (x, y) = listaATabla(xs, ys, 0)
+        if (x.size <= 1 || i !in x.indices) return this
+        return copy(xs = x.filterIndexed { j, _ -> j != i }, ys = y.filterIndexed { j, _ -> j != i })
+    }
+
+    private fun List<String>.cambiar(i: Int, t: String) = mapIndexed { j, v -> if (j == i) t else v }
 }
 
 // ── Regresión múltiple ──
@@ -166,7 +221,7 @@ private const val TAG_MULTIPLE = "M"
 fun EstadoFormulario.aLista(): List<String> = when (this) {
     is EstadoSistema -> listOf(TAG_SISTEMA, variables, x0, tolerancia, maxIter) + ecuaciones
     is EstadoInterpolacion -> listOf(TAG_INTERPOLACION, xs, ys, x, modo.name, grado)
-    is EstadoRegresionPolinomial -> listOf(TAG_POLINOMIAL, xs, ys, grado, xPredecir)
+    is EstadoRegresionPolinomial -> listOf(TAG_POLINOMIAL, grado, xPredecir, vista.name, xs.size.toString()) + xs + ys
     is EstadoRegresionMultiple -> listOf(TAG_MULTIPLE, numVariables.toString(), xPredecir) + filas.flatten()
 }
 
@@ -176,13 +231,24 @@ fun estadoDesdeLista(l: List<String>): EstadoFormulario? {
     return when (l[0]) {
         TAG_SISTEMA -> if (l.size < 5) null else EstadoSistema(l.drop(5), l[1], l[2], l[3], l[4])
         TAG_INTERPOLACION -> if (l.size != 6) null else EstadoInterpolacion(l[1], l[2], l[3], modoDesde(l[4]), l[5])
-        TAG_POLINOMIAL -> if (l.size != 5) null else EstadoRegresionPolinomial(l[1], l[2], l[3], l[4])
+        TAG_POLINOMIAL -> polinomialDesdeLista(l)
         TAG_MULTIPLE -> multipleDesdeLista(l)
         else -> null
     }
 }
 
 private fun modoDesde(s: String): ModoNodos = ModoNodos.entries.firstOrNull { it.name == s } ?: ModoNodos.MANUAL
+
+private fun polinomialDesdeLista(l: List<String>): EstadoRegresionPolinomial? {
+    val nx = l.getOrNull(4)?.toIntOrNull() ?: return null
+    if (nx < 0 || l.size < 5 + nx) return null
+    val vista = VistaDatos.entries.firstOrNull { it.name == l[3] } ?: VistaDatos.LISTA
+    return EstadoRegresionPolinomial(l.subList(5, 5 + nx).toList(), l.drop(5 + nx), l[1], l[2], vista)
+}
+
+/** "Cargar ejemplo" conserva la vista (Lista o Tabla) que tenía el alumno. */
+fun EstadoFormulario.conVistaDe(anterior: EstadoFormulario): EstadoFormulario =
+    if (this is EstadoRegresionPolinomial && anterior is EstadoRegresionPolinomial) conVista(anterior.vista) else this
 
 private fun multipleDesdeLista(l: List<String>): EstadoRegresionMultiple? {
     val k = l.getOrNull(1)?.toIntOrNull() ?: return null

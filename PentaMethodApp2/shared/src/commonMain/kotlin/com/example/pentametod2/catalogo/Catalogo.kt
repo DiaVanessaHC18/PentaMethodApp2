@@ -1,5 +1,12 @@
 package com.example.pentametod2.catalogo
 
+import com.example.pentametod2.exportar.GeneradorLagrange
+import com.example.pentametod2.exportar.GeneradorMetodo
+import com.example.pentametod2.exportar.GeneradorNewtonInterpolacion
+import com.example.pentametod2.exportar.GeneradorNewtonSistemas
+import com.example.pentametod2.exportar.GeneradorPuntoFijo
+import com.example.pentametod2.exportar.GeneradorRegresionMultiple
+import com.example.pentametod2.exportar.GeneradorRegresionPolinomial
 import com.example.pentametod2.methods.Interpolacion
 import com.example.pentametod2.methods.MetodoNumericoException
 import com.example.pentametod2.methods.Regresion
@@ -7,6 +14,7 @@ import com.example.pentametod2.methods.SistemasNoLineales
 import com.example.pentametod2.model.Bloque
 import com.example.pentametod2.model.BloqueGrupo
 import com.example.pentametod2.model.BloqueMatriz
+import com.example.pentametod2.model.BloquePaso
 import com.example.pentametod2.model.BloqueTabla
 import com.example.pentametod2.model.BloqueTexto
 import com.example.pentametod2.model.Celda
@@ -35,6 +43,23 @@ object Catalogo {
     )
 
     fun metodos(): List<MetodoInfo> = METODOS
+
+    // ── Exportación: cada método registra aquí lo que sabe exportar ──
+
+    private val GENERADORES: Map<MetodoId, GeneradorMetodo> = mapOf(
+        MetodoId.PUNTO_FIJO to GeneradorPuntoFijo,
+        MetodoId.NEWTON_SISTEMAS to GeneradorNewtonSistemas,
+        MetodoId.REGRESION_POLINOMIAL to GeneradorRegresionPolinomial,
+        MetodoId.REGRESION_MULTIPLE to GeneradorRegresionMultiple,
+        MetodoId.LAGRANGE to GeneradorLagrange,
+        MetodoId.NEWTON_INTERPOLACION to GeneradorNewtonInterpolacion,
+    )
+
+    fun generador(id: MetodoId): GeneradorMetodo? = GENERADORES[id]
+
+    fun puedeExportarExcel(id: MetodoId): Boolean = generador(id)?.excel == true
+
+    fun puedeExportarOctave(id: MetodoId): Boolean = generador(id)?.octave == true
 
     fun info(id: MetodoId): MetodoInfo = METODOS.first { it.id == id }
 
@@ -99,6 +124,7 @@ object Catalogo {
         is BloqueTabla -> b.filas.any { f -> f.any { it is Celda.Num && !it.v.isFinite() } }
         is BloqueMatriz -> b.datos.any { f -> f.any { !it.isFinite() } }
         is BloqueGrupo -> b.bloques.any { bloqueNoFinito(it) }
+        is BloquePaso -> b.matrices.any { bloqueNoFinito(it) } || b.resultados.any { it.valor?.isFinite() == false }
         is BloqueTexto -> false
     }
 
@@ -142,18 +168,21 @@ object Catalogo {
     private fun puntoFijo(e: EntradaSistema): SalidaMetodo {
         val d = leerSistema(e)
         val r = SistemasNoLineales.puntoFijoSistema(d.ecuaciones, d.variables, d.x0, d.tol, d.maxIter)
-        return PresentadorSistemas.presentarPuntoFijo(r, d.ecuaciones, d.tol)
+        return PresentadorSistemas.presentarPuntoFijo(r, d.ecuaciones, d.tol, d.maxIter)
     }
 
     private fun newtonSistemas(e: EntradaSistema): SalidaMetodo {
         val d = leerSistema(e)
         val r = SistemasNoLineales.newtonSistema(d.ecuaciones, d.variables, d.x0, d.tol, d.maxIter)
-        return PresentadorSistemas.presentarNewtonSistemas(r, d.ecuaciones, d.tol)
+        return PresentadorSistemas.presentarNewtonSistemas(r, d.ecuaciones, d.tol, d.maxIter)
     }
 
     // ── Interpolación ──
 
-    private fun leerNodos(e: EntradaInterpolacion): Triple<DoubleArray, DoubleArray, Double> {
+    /** Nodos que usa el método; en automático, `dados` dice cuántos escribió el alumno. */
+    private class Nodos(val xs: DoubleArray, val ys: DoubleArray, val x: Double, val automatico: Boolean, val dados: Int)
+
+    private fun leerNodos(e: EntradaInterpolacion): Nodos {
         val xs = LectorEntrada.numeros(e.xs, "Los nodos x")
         val ys = LectorEntrada.numeros(e.ys, "Los valores y")
         val x = LectorEntrada.numero(e.x, "El valor de x a evaluar")
@@ -165,24 +194,24 @@ object Catalogo {
                         "hay ${xs.size}. Usa el modo Automático para tomar solo los más cercanos a x."
                 )
             }
-            return Triple(xs, ys, x)
+            return Nodos(xs, ys, x, automatico = false, dados = xs.size)
         }
         val grado = LectorEntrada.entero(e.grado, "El grado", 1, LectorEntrada.MAX_GRADO_INTERPOLACION)
         if (xs.size == ys.size && grado + 1 > xs.size) {
             throw MetodoNumericoException("Para grado $grado se necesitan ${grado + 1} nodos y solo hay ${xs.size}")
         }
         val (sx, sy) = Interpolacion.seleccionarNodosCercanos(xs, ys, x, grado + 1)
-        return Triple(sx, sy, x)
+        return Nodos(sx, sy, x, automatico = true, dados = xs.size)
     }
 
     private fun lagrange(e: EntradaInterpolacion): SalidaMetodo {
-        val (xs, ys, x) = leerNodos(e)
-        return PresentadorInterpolacion.presentarLagrange(Interpolacion.lagrange(xs, ys, x))
+        val n = leerNodos(e)
+        return PresentadorInterpolacion.presentarLagrange(Interpolacion.lagrange(n.xs, n.ys, n.x), n.automatico, n.dados)
     }
 
     private fun newtonInterpolacion(e: EntradaInterpolacion): SalidaMetodo {
-        val (xs, ys, x) = leerNodos(e)
-        return PresentadorInterpolacion.presentarNewton(Interpolacion.newtonDiferenciasDivididas(xs, ys, x))
+        val n = leerNodos(e)
+        return PresentadorInterpolacion.presentarNewton(Interpolacion.newtonDiferenciasDivididas(n.xs, n.ys, n.x), n.automatico, n.dados)
     }
 
     // ── Regresión ──

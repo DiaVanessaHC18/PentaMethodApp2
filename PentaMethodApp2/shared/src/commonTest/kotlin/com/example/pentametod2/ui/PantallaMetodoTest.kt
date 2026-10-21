@@ -5,7 +5,7 @@ import com.example.pentametod2.model.MetodoId
 import com.example.pentametod2.ui.formularios.EstadoRegresionPolinomial
 import com.example.pentametod2.ui.formularios.EstadoSistema
 import com.example.pentametod2.ui.formularios.LineaEntrada
-import com.example.pentametod2.ui.formularios.apilarBotones
+import com.example.pentametod2.ui.formularios.botonesSinIcono
 import com.example.pentametod2.ui.formularios.campoEcuacion
 import com.example.pentametod2.ui.formularios.contadorEcuaciones
 import com.example.pentametod2.ui.formularios.estadoDesdeEntrada
@@ -68,8 +68,8 @@ class PantallaMetodoTest {
     }
 
     @Test
-    fun botonesApiladosConFuenteGrande() {
-        kotlin.test.assertFalse(apilarBotones(1.0f))
-        assertTrue(apilarBotones(1.3f))
+    fun botonesDelDockSinIconoConFuenteGrande() {
+        kotlin.test.assertFalse(botonesSinIcono(1.0f))
+        assertTrue(botonesSinIcono(1.3f))
     }
 }

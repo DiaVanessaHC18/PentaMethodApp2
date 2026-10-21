@@ -3,6 +3,7 @@ package com.example.pentametod2.catalogo
 import com.example.pentametod2.model.Bloque
 import com.example.pentametod2.model.BloqueGrupo
 import com.example.pentametod2.model.BloqueMatriz
+import com.example.pentametod2.model.BloquePaso
 import com.example.pentametod2.model.BloqueTabla
 import com.example.pentametod2.model.BloqueTexto
 import com.example.pentametod2.model.Celda
@@ -46,6 +47,11 @@ private fun textosDe(b: Bloque, t: MutableList<String>) {
             t += b.titulo
             for (h in b.bloques) textosDe(h, t)
         }
+        is BloquePaso -> {
+            t += listOf(b.titulo, b.explicacion, b.resumenCorto) + b.formulaGeneral + b.conTusDatos
+            for (r in b.resultados) t += listOf(r.etiqueta, r.texto)
+            for (m in b.matrices) textosDe(m, t)
+        }
     }
 }
 
@@ -56,6 +62,7 @@ private fun numerosDe(b: Bloque): List<Double> = when (b) {
     is BloqueTabla -> b.filas.flatten().filterIsInstance<Celda.Num>().map { it.v }
     is BloqueMatriz -> b.datos.flatten()
     is BloqueGrupo -> numeros(b.bloques)
+    is BloquePaso -> numeros(b.matrices) + b.resultados.mapNotNull { it.valor }
     is BloqueTexto -> emptyList()
 }
 

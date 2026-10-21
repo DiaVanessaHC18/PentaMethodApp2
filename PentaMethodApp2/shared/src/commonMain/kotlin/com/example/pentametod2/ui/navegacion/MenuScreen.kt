@@ -33,8 +33,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import com.example.pentametod2.catalogo.MetodoInfo
 import com.example.pentametod2.catalogo.Secciones
@@ -100,11 +102,27 @@ fun MenuScreen(metodos: List<MetodoInfo>, alAbrir: (MetodoId) -> Unit) {
 
 @Composable
 private fun Encabezado(alInfo: () -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(top = Dimens.e8), verticalAlignment = Alignment.CenterVertically) {
-        Text("PENTAMETOD2", style = MaterialTheme.mono.marca, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
-        IconButton(onClick = alInfo) { Icono(Iconos.info, "Acerca de la app", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+    Row(
+        Modifier.fillMaxWidth().padding(top = Dimens.e8),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Spacer(Modifier.weight(1f))
+        IconButton(onClick = alInfo) {
+            Icono(Iconos.info, "Acerca de la app", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
-    Text("Métodos numéricos", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.semantics { heading() })
+    Text(
+        "PENTAMETOD",
+        style = MaterialTheme.mono.marca.copy(
+            fontSize = 36.sp,
+            lineHeight = 44.sp,
+            letterSpacing = 0.04.em,
+            fontWeight = FontWeight.SemiBold,
+        ),
+        color = MaterialTheme.colorScheme.primary,
+        maxLines = 1,
+        modifier = Modifier.semantics { heading() },
+    )
     Text(
         "Elige un método para empezar a calcular.",
         style = MaterialTheme.typography.bodyMedium,
@@ -112,6 +130,7 @@ private fun Encabezado(alInfo: () -> Unit) {
         modifier = Modifier.padding(top = Dimens.e4),
     )
 }
+
 
 @Composable
 private fun TarjetaMetodo(m: MetodoInfo, alAbrir: (MetodoId) -> Unit) {

@@ -28,6 +28,8 @@ object Dimens {
     val areaTactil = 48.dp
     val boton = 48.dp
     val campo = 56.dp
+    val campoCompacto = 44.dp
+    val tactilCompacto = 44.dp
     val chip = 28.dp
     val chipCategoria = 32.dp
 
